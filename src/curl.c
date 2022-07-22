@@ -8,6 +8,7 @@
 
 #include "log.h"
 #include "pch.h"
+#include "tokenmanager.h"
 
 #ifndef _WIN32
 int strcat_s(char *restrict dest, int destsz, const char *restrict src)
@@ -71,6 +72,20 @@ size_t WriteMemoryCallback(void *contents, size_t size, size_t nmemb, void *user
 
   return realsize;
 }
+// int GetAccessTokenFromIMDS(const char *type, MemoryStruct *accessToken, struct TokenManager *tokenmgr)
+int update_token_manager(struct json_object *parsed_json){
+  struct json_object *atoken;
+  struct json_object *expires_on;
+
+
+  if (!json_object_object_get_ex(parsed_json, "expires_on", &expires_on)) {
+    
+  }
+
+  const char *expires_on_str = json_object_get_string(expires_on);
+  const char *accessTokenStr = json_object_get_string(atoken);
+
+}
 
 int GetAccessTokenFromIMDS(const char *type, MemoryStruct *accessToken)
 {
@@ -82,6 +97,7 @@ int GetAccessTokenFromIMDS(const char *type, MemoryStruct *accessToken)
 
   char *IDMSEnv = NULL;
   size_t requiredSize;
+  extern struct TokenManager token_manager[2];  
 
 #ifdef _WIN32
   getenv_s(&requiredSize, NULL, 0, "IDENTITY_ENDPOINT");
@@ -155,7 +171,9 @@ int GetAccessTokenFromIMDS(const char *type, MemoryStruct *accessToken)
 
   struct json_object *parsed_json;
   struct json_object *atoken;
+  struct json_object *expires_on;
   parsed_json = json_tokener_parse(accessToken->memory);
+  log_info( "parsed json from IDMS: \n%s", json_object_to_json_string_ext(parsed_json, JSON_C_TO_STRING_SPACED));
 
   if (!json_object_object_get_ex(parsed_json, "access_token", &atoken)) {
     log_error( "An access_token field was not found in the IDMS endpoint response. Is a managed identity available?\n");
@@ -166,8 +184,21 @@ int GetAccessTokenFromIMDS(const char *type, MemoryStruct *accessToken)
     return 0;
   }
 
+  if (!json_object_object_get_ex(parsed_json, "expires_on", &expires_on)) {
+    log_error( "Failed to find the expiration time for this token\n");
+    vaultErrorLog(parsed_json);
+    free(accessToken->memory);
+    accessToken->memory = NULL;
+    accessToken->size = 0;
+    return 0;
+  }
+
+  time_t time;
   const char *accessTokenStr = json_object_get_string(atoken);
+  const char *expires_on_str = json_object_get_string(expires_on);
+  time = strtol(expires_on_str, NULL, 10);
   const size_t accessTokenStrSize = strlen(accessTokenStr);
+  log_info( "Size of access token: %d", accessTokenStrSize);
   char *access = (char *)malloc(accessTokenStrSize + 1);
   memcpy(access, accessTokenStr, accessTokenStrSize);
   access[accessTokenStrSize] = '\0';
@@ -175,6 +206,21 @@ int GetAccessTokenFromIMDS(const char *type, MemoryStruct *accessToken)
   free(accessToken->memory);
   accessToken->memory = access;
   accessToken->size = accessTokenStrSize + 1;
+  if(strcasecmp(type, "vault") == 0){
+    // log_info("Value that is going to Vault tokenmanager: %s", access);
+    token_manager[0].accesstoken = malloc(strlen(access) + 1);
+    strcpy(token_manager[0].accesstoken , access);
+    token_manager[0].expiration = strtol(expires_on_str, NULL, 10);
+    token_manager[0].size = accessTokenStrSize+1;
+    // log_info("Vault tokenmanager value after setting in setup: %s", token_manager[0].accesstoken);
+  }else if (strcasecmp(type, "managedHsm") == 0){
+    token_manager[1].accesstoken = malloc(strlen(access) + 1);
+    strcpy(token_manager[1].accesstoken , access);
+    token_manager[1].expiration = strtol(expires_on_str, NULL, 10);
+    token_manager[1].size = accessTokenStrSize+1;
+    // log_info("MHSM tokenmanager value after setting in setup: %s", token_manager[1].accesstoken);
+  }
+  
   json_object_put(parsed_json);
   return 1;
 }
@@ -456,7 +502,7 @@ EVP_PKEY *AkvGetKey(const char *type, const char *keyvault, const char *keyname,
   }
 
   parsed_json = json_tokener_parse(keyInfo.memory);
-  log_debug( "Key Info in Json \n---\n%s\n---\n", json_object_to_json_string_ext(parsed_json, JSON_C_TO_STRING_SPACED | JSON_C_TO_STRING_PRETTY));
+  // log_debug( "Key Info in Json \n---\n%s\n---\n", json_object_to_json_string_ext(parsed_json, JSON_C_TO_STRING_SPACED | JSON_C_TO_STRING_PRETTY));
 
   struct json_object *keyMaterial;
   json_object_object_get_ex(parsed_json, "key", &keyMaterial);
