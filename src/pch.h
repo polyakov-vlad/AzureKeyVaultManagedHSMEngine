@@ -23,6 +23,8 @@
 #include "e_akv_err.h"
 #include "base64.h"
 #include "base64lib.h"
+#include "pthread.h"
+#include "tokenmanager.h"
 
 #ifdef _WIN32
 #define strcasecmp _stricmp

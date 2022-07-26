@@ -4,7 +4,6 @@
 #include "log.h"
 #include "pch.h"
 #include "time.h"
-#include "tokenmanager.h"
 
 /**
  * @brief return the algorithm name for key vault or managed HSM for the given public key and hash algorithm
@@ -45,11 +44,6 @@ static char *ctx_to_alg(EVP_PKEY_CTX *ctx, const EVP_MD *sigmd)
         return NULL;
     }
 }
-
-bool set;
-// struct TokenManager v = {.accesstoken = "", .expiration = 0, .size=0}; 
-// struct TokenManager m = {.accesstoken = "", .expiration = 0, .size=0};
-struct TokenManager token_manager[2];
 
 int akv_pkey_rsa_sign(EVP_PKEY_CTX *ctx, unsigned char *sig,
                       size_t *siglen, const unsigned char *tbs,
@@ -110,43 +104,29 @@ int akv_pkey_rsa_sign(EVP_PKEY_CTX *ctx, unsigned char *sig,
     log_error("TYPE OF ACCESS: %s", akv_key->keyvault_type);
 
     MemoryStruct accessToken;
-    //0th index is vault, 1st index is hsm
-    extern struct TokenManager token_manager[2];
-
-    time_t current_time = time(NULL);
-    log_info("current time: %d", current_time);
-    extern bool set;
-    if(set == false){
-        // token_manager[0] = v;
-        // token_manager[1] = m;
-    } 
-
-    //if there is no access token or if it is 10 seconds from expiring, request a new one
-    //if((akv_key->keyvault_type == "vault" && (!token_manager[0].accesstoken || (token_manager[0].expiration - current_time) < 10)) || (akv_key->keyvault_type == "managedHsm" && (!token_manager[1].accesstoken || (token_manager[1].expiration - current_time) < 10))){
-    // if((strcasecmp(akv_key->keyvault_type, "vault") == 0 && set == false) || (strcasecmp(akv_key->keyvault_type, "managedHsm") == 0 && set == false)){
-    log_info("Value of set: %d", set);
-    if(set == false){
-        set = true;
-        log_info("ENTERING IMDS FUNCTION!");
-        if (!GetAccessTokenFromIMDS(akv_key->keyvault_type, &accessToken))
-        {
-            return 0;
-        }
+    if(strcasecmp(akv_key->keyvault_type, "vault") == 0){
+        log_info("Before grabbing local token for mhsm");
+        struct Token token = get_token("vault");
+        log_info("Value of token access: %s", token.accesstoken);
+        accessToken.size = token.size;
+        accessToken.memory = token.accesstoken;
     }else{
-        log_info("USING STORED VALUES!");
-        if(strcasecmp(akv_key->keyvault_type, "vault") == 0){
-            log_info("Before value of tokenmanager");
-            log_info("Value of tokenmanager: %s", token_manager[0].accesstoken);
-            accessToken.size = token_manager[0].size;
-            log_info("before memory change");
-            accessToken.memory = token_manager[0].accesstoken;
-        }else{
-            log_info("Before size in mhsm");
-            accessToken.size = token_manager[1].size;
-            accessToken.memory = token_manager[1].accesstoken;
-        }
-        log_info("Value of accesstoken after local copy: %s", accessToken.memory);
+        log_info("Before grabbing local token for mhsm");
+        struct Token token = get_token("managedHsm");
+        accessToken.size = token.size;
+        accessToken.memory = token.accesstoken;
     }
+    log_info("Value of accesstoken after local copy: %s", accessToken.memory);
+
+
+
+
+    //original
+    // if (!GetAccessTokenFromIMDS(akv_key->keyvault_type, &accessToken))
+    // {
+    //     return 0;
+    // }
+    
 
     MemoryStruct signatureText;
     log_debug( "keyvault [%s][%s]", akv_key->keyvault_name, akv_key->key_name);

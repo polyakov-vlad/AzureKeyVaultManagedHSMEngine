@@ -15,6 +15,7 @@ set(eakv_src
   pch.c
   log.c
   base64lib.c
+  tokenmanager.c
   )
 add_library(eakv_obj OBJECT ${eakv_src})
 set_property(TARGET eakv_obj PROPERTY POSITION_INDEPENDENT_CODE 1)

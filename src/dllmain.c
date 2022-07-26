@@ -3,6 +3,7 @@
 
 #include "log.h"
 #include "pch.h"
+#include "tokenmanager.h"
 
 static const char *engine_akv_id = "e_akv";
 static const char *engine_akv_name = "AKV/HSM engine";
@@ -107,8 +108,12 @@ static int akv_init(ENGINE *e)
         
         // add log file to the logger
         log_add_fp(fp, LOG_DEBUG);
-    }
 
+        pthread_t tid;
+        pthread_create(&tid, NULL, update_token, NULL);
+        // refresh("vault");
+        // refresh("managedHsm");
+    }
     return 1;
 
 err:
