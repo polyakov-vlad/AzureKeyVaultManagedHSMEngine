@@ -1,5 +1,5 @@
 #include "tokenmanager.h"
-#include <curl/curl.h>
+// #include <curl/curl.h>
 
 
 /**
@@ -10,8 +10,6 @@
 void refresh(char* type){
     CURL *curl_handle;
     CURLcode res;
-
-    extern struct Token tokens[2];
 
     MemoryStruct at;
     MemoryStruct *accessToken;
@@ -46,6 +44,7 @@ void refresh(char* type){
         strncat(idmsUrl, "&resource=https://managedhsm.azure.net", sizeof idmsUrl);
     }
 
+    log_info("before curl"); 
     curl_handle = curl_easy_init();
     curl_easy_setopt(curl_handle, CURLOPT_URL, idmsUrl);
     struct curl_slist *headers = NULL;
@@ -59,6 +58,7 @@ void refresh(char* type){
 
     res = curl_easy_perform(curl_handle);
     curl_easy_cleanup(curl_handle);
+
 
     if (res != CURLE_OK)
     {
@@ -134,33 +134,40 @@ void init_tokens(pthread_mutex_t token_access_mutex){
 /**
  * @brief Updates the token if needed. This function will be ran via thread.
  */
-void* update_token(void * arg){
-    // pthread_mutex_t token_access_mutex;
-    //init_tokens(token_access_mutex);
+void update_token(void* arg){
+    // struct Token token;
+    // tokens = malloc(2 * sizeof token);
+    // log_info("update token function called"); 
     // pthread_mutex_lock(&token_access_mutex);
-    refresh("vault");
-    refresh("managedHsm");
+    // log_info("x before: %d", &x); 
+    // log_info("update token called"); 
+    // // refresh("vault");
+    // // refresh("managedHsm");
+    // x=&x+10;
+    // log_info("x after: %d", &x); 
     // pthread_mutex_unlock(&token_access_mutex);
-    // while (1)
-    // {    
-    //     time_t now  = time(NULL);
-    //     if(((now - tokens[0].acquired) > 1800) || (tokens[0].expiration <= now)){
-    //         pthread_mutex_lock(&token_access_mutex);
-    //         //REFRESH TOKEN FOR VAULT
-    //         tokens[0] = refresh("vault");
-    //         pthread_mutex_unlock(&token_access_mutex);
+
+    pthread_mutex_t token_access_mutex;
+    init_tokens(token_access_mutex);
+    while (1)
+    {    
+        time_t now  = time(NULL);
+        if(((now - tokens[0].acquired) > 1800) || (tokens[0].expiration <= now)){
+            pthread_mutex_lock(&token_access_mutex);
+            //REFRESH TOKEN FOR VAULT
+            refresh("vault");
+            pthread_mutex_unlock(&token_access_mutex);
             
-    //     }
-    //     if(((now - tokens[1].acquired) > 1800) || (tokens[1].expiration <= now)){
-    //         pthread_mutex_lock(&token_access_mutex);
-    //         //REFRESH TOKEN FOR MHSM
-    //         tokens[1] = refresh("managedHsm");
-    //         pthread_mutex_unlock(&token_access_mutex);
-    //     }
-    //     sleep(60);
-    // }
-    pthread_exit(NULL);
-    return NULL;
+        }
+        if(((now - tokens[1].acquired) > 1800) || (tokens[1].expiration <= now)){
+            pthread_mutex_lock(&token_access_mutex);
+            //REFRESH TOKEN FOR MHSM
+            refresh("managedHsm");
+            pthread_mutex_unlock(&token_access_mutex);
+        }
+        sleep(60);
+    }
+    free(tokens);
 }
 
 /**
@@ -171,8 +178,8 @@ void* update_token(void * arg){
  */
 struct Token get_token(char* type){
     log_info("get_token about to print values:");
-    log_info("Value of token access: %s", tokens[0].accesstoken);
-    log_info("Value of token access: %s", tokens[1].accesstoken);
+    log_info("Value of token access Vault: %s", tokens[0].accesstoken);
+    log_info("Value of token access MHSM: %s", tokens[1].accesstoken);
 
     if (strcasecmp(type, "vault") == 0){
         return tokens[0];

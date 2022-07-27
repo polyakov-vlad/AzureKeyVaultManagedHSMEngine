@@ -4,6 +4,7 @@
 #include "log.h"
 #include "pch.h"
 #include "tokenmanager.h"
+#include <pthread.h>
 
 static const char *engine_akv_id = "e_akv";
 static const char *engine_akv_name = "AKV/HSM engine";
@@ -14,6 +15,10 @@ static EC_KEY_METHOD *akv_eckey_method = NULL;
 int akv_idx = -1;
 int rsa_akv_idx = -1;
 int eckey_akv_idx = -1;
+// int pthread_created = -1;
+
+// pthread_t tid;
+
 
 /**
  * @brief Free RSA context, paired with RSA_set_ex_data in akv_load_privkey.
@@ -64,6 +69,11 @@ void akv_eckey_free(EC_KEY *eckey)
     EC_KEY_set_ex_data(eckey, eckey_akv_idx, NULL);
 }
 
+// void* thread_proc(void* vargp){
+//     log_info("started a new thread");
+//     update_token(vargp);
+// }
+
 /**
  * @brief Set up engine for AKV/HSM.
  *
@@ -109,11 +119,16 @@ static int akv_init(ENGINE *e)
         // add log file to the logger
         log_add_fp(fp, LOG_DEBUG);
 
-        pthread_t tid;
-        pthread_create(&tid, NULL, update_token, NULL);
-        // refresh("vault");
-        // refresh("managedHsm");
+        // struct Token token;
+        // extern struct Token* tokens;
+        // tokens = malloc(2 * sizeof token);
+        // if(pthread_created == -1){
+        //     log_info("about to start threading...");
+        //     // pthread_created = pthread_create(&tid, NULL, thread_proc, (void*)&tid);
+        //     log_info("Finished setting up threading");
+        // }
     }
+    log_info("returned success from akv init");
     return 1;
 
 err:
@@ -129,6 +144,7 @@ err:
  */
 static int akv_finish(ENGINE *e)
 {
+    log_info("returned success from akv finish");
     return 1;
 }
 
@@ -153,6 +169,7 @@ static int akv_destroy(ENGINE *e)
     }
 
     ERR_unload_AKV_strings();
+    log_info("returned success from akv destroy");
     return 1;
 }
 
@@ -374,8 +391,10 @@ static int bind_akv(ENGINE *e)
         goto memerr;
 
     ERR_load_AKV_strings();
+    log_info("returned success from bind akv");
     return 1;
 memerr:
+    log_info("memory error in the bind akv");
     if (akv_rsa_method)
     {
         RSA_meth_free(akv_rsa_method);

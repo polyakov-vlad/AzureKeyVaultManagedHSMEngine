@@ -1,5 +1,6 @@
 #ifndef TOKENMANAGER_H
 #define TOKENMANAGER_H
+#define NUMBEROFTOKENS 2
 
 #include "pthread.h"
 #include "time.h"
@@ -10,6 +11,9 @@
 #include <stdlib.h>
 #include <string.h>
 
+/*
+* Struct that contains the accesstoken, acquired time, expiration time, and size of accesstoken
+*/
 struct Token
 {
     char* accesstoken;
@@ -18,10 +22,7 @@ struct Token
     size_t size;
 };
 
-/*
-* Array that contains tokens for both the AKV [0] and the MHSM [1].
-*/
-struct Token tokens[2];
+struct Token tokens[NUMBEROFTOKENS];
 
 /**
  * @brief Refreshes and returns the token of the specified type.
@@ -43,7 +44,7 @@ void init_tokens(pthread_mutex_t token_access_mutex);
  * @param arg void* argument for thread creation
  * @return void* return for thread creation
  */
-void* update_token(void * arg);
+void update_token(void* arg);
 
 /**
  * @brief Get the access token value based on the type passed in. 
