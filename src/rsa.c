@@ -103,30 +103,21 @@ int akv_pkey_rsa_sign(EVP_PKEY_CTX *ctx, unsigned char *sig,
     // log_debug( "-->akv_pkey_rsa_sign, tbs size [%zu], AKV_ALG [%s]", tbslen, AKV_ALG);
     log_error("TYPE OF ACCESS: %s", akv_key->keyvault_type);
 
-        MemoryStruct accessToken;
-        if(strcasecmp(akv_key->keyvault_type, "vault") == 0){
-            log_info("Before grabbing local token for mhsm");
-            struct Token token = get_token("vault");
-            log_info("Value of token access: %s", token.accesstoken);
-            accessToken.size = token.size;
-            accessToken.memory = token.accesstoken;
-        }else{
-            log_info("Before grabbing local token for mhsm");
-            struct Token token = get_token("managedHsm");
-            accessToken.size = token.size;
-            accessToken.memory = token.accesstoken;
+    MemoryStruct accessToken;
+    if(strcasecmp(akv_key->keyvault_type, "vault") == 0){
+        struct Token token = get_token("vault");
+        accessToken.size = token.size;
+        accessToken.memory = token.accesstoken;
+    }else if (strcasecmp(akv_key->keyvault_type, "managedHsm") == 0){
+        struct Token token = get_token("managedHsm");
+        accessToken.size = token.size;
+        accessToken.memory = token.accesstoken;
+    }else{
+        if (!GetAccessTokenFromIMDS(akv_key->keyvault_type, &accessToken))
+        {
+            return 0;
         }
-        log_info("Value of accesstoken after local copy: %s", accessToken.memory);
-
-
-
-
-        // // original
-        // if (!GetAccessTokenFromIMDS(akv_key->keyvault_type, &accessToken))
-        // {
-        //     return 0;
-        // }
-    
+    }
 
     MemoryStruct signatureText;
     log_debug( "keyvault [%s][%s]", akv_key->keyvault_name, akv_key->key_name);

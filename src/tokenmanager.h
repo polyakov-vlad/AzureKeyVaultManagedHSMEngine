@@ -34,7 +34,7 @@ void refresh(char* type);
 /**
  * @brief Initializes the tokens so that they both have access values on startup.
  * 
- * @param token_access_mutex The mutex that 
+ * @param token_access_mutex mutex to block access/write when updating 
  */
 void init_tokens(pthread_mutex_t token_access_mutex);
 
@@ -44,7 +44,7 @@ void init_tokens(pthread_mutex_t token_access_mutex);
  * @param arg void* argument for thread creation
  * @return void* return for thread creation
  */
-void update_token(void* arg);
+void* update_token(void* arg);
 
 /**
  * @brief Get the access token value based on the type passed in. 

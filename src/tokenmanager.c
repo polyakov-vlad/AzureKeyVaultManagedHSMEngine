@@ -8,22 +8,21 @@
  * @param type String that has which type of access token to recieve (vault or managedHsm).
  */
 void refresh(char* type){
+    log_info("Initiated refresh for the %s...", type);
     CURL *curl_handle;
     CURLcode res;
 
     MemoryStruct at;
     MemoryStruct *accessToken;
     accessToken = &at;
-
     accessToken->memory = malloc(1);
     accessToken->size = 0;
 
     char *IDMSEnv = NULL;
     size_t requiredSize;
-
     IDMSEnv = getenv("IDENTITY_ENDPOINT");
-
     char idmsUrl[4 * 1024] = {0};
+
     if (IDMSEnv)
     {
         log_info( "Use overrided IDMS url : %s\n", IDMSEnv);
@@ -34,7 +33,6 @@ void refresh(char* type){
     {
         strncat(idmsUrl, "http://169.254.169.254/metadata/identity/oauth2/token?api-version=2018-02-01", sizeof idmsUrl);
     }
-
     if (strcasecmp(type, "vault") == 0)
     {
         strncat(idmsUrl, "&resource=https://vault.azure.net", sizeof idmsUrl);
@@ -51,15 +49,12 @@ void refresh(char* type){
     headers = curl_slist_append(headers, "Content-Type: application/json");
     headers = curl_slist_append(headers, "Metadata: true");
     curl_easy_setopt(curl_handle, CURLOPT_HTTPHEADER, headers);
-
     curl_easy_setopt(curl_handle, CURLOPT_WRITEFUNCTION, WriteMemoryCallback);
     curl_easy_setopt(curl_handle, CURLOPT_WRITEDATA, (void *)accessToken);
     curl_easy_setopt(curl_handle, CURLOPT_USERAGENT, "libcurl-agent/1.0");
-
     res = curl_easy_perform(curl_handle);
     curl_easy_cleanup(curl_handle);
-
-
+    
     if (res != CURLE_OK)
     {
         log_error( "curl_easy_perform() failed: %s\n", curl_easy_strerror(res));
@@ -73,8 +68,6 @@ void refresh(char* type){
     struct json_object *atoken;
     struct json_object *expires_on;
     parsed_json = json_tokener_parse(accessToken->memory);
-    // log_info( "parsed json from IDMS: \n%s", json_object_to_json_string_ext(parsed_json, JSON_C_TO_STRING_SPACED));
-
     if (!json_object_object_get_ex(parsed_json, "access_token", &atoken)) {
         log_error( "An access_token field was not found in the IDMS endpoint response. Is a managed identity available?\n");
         free(accessToken->memory);
@@ -98,10 +91,10 @@ void refresh(char* type){
     expiration_time = strtol(expires_on_str, NULL, 10);
     const size_t accessTokenStrSize = strlen(accessTokenStr);
     log_info( "Size of access token: %d", accessTokenStrSize);
+
     char *access = (char *)malloc(accessTokenStrSize + 1);
     memcpy(access, accessTokenStr, accessTokenStrSize);
     access[accessTokenStrSize] = '\0';
-
     free(accessToken->memory);
     accessToken->memory = access;
     accessToken->size = accessTokenStrSize + 1;
@@ -109,19 +102,26 @@ void refresh(char* type){
     char * access_copy = malloc(accessToken->size); 
     strcpy(access_copy, accessTokenStr);
 
-    struct Token updated_token = {.accesstoken=access_copy, .acquired=now, .expiration=expiration_time, .size=accessTokenStrSize};
-    // return updated_token;
-
     if (strcasecmp(type, "vault") == 0){
-        tokens[0] = updated_token;
-    }else if (strcasecmp(type, "managedHsm") == 0){
-        tokens[1] = updated_token;
+        log_info("Value for MHSM token: %s", access);
+        tokens[0].accesstoken = access;
+        tokens[0].acquired = now;
+        tokens[0].expiration = expiration_time;
+        tokens[0].size = accessTokenStrSize;
+    } else if (strcasecmp(type, "managedHsm") == 0){
+        log_info("Value for MHSM token: %s", access);
+        tokens[1].accesstoken = access;
+        tokens[1].acquired = now;
+        tokens[1].expiration = expiration_time;
+        tokens[1].size = accessTokenStrSize;
     }
-    log_info( "Last line in refresh");
+    log_info("Finished refresh for %s at this pid, %d", type, getpid());
 }
 
 /**
  * @brief Initializes the tokens so that they both have access values on startup.
+ * 
+ * @param token_access_mutex mutex to block access/write when updating 
  */
 void init_tokens(pthread_mutex_t token_access_mutex){
     
@@ -134,24 +134,18 @@ void init_tokens(pthread_mutex_t token_access_mutex){
 /**
  * @brief Updates the token if needed. This function will be ran via thread.
  */
-void update_token(void* arg){
-    // struct Token token;
-    // tokens = malloc(2 * sizeof token);
-    // log_info("update token function called"); 
-    // pthread_mutex_lock(&token_access_mutex);
-    // log_info("x before: %d", &x); 
-    // log_info("update token called"); 
-    // // refresh("vault");
-    // // refresh("managedHsm");
-    // x=&x+10;
-    // log_info("x after: %d", &x); 
-    // pthread_mutex_unlock(&token_access_mutex);
-
-    pthread_mutex_t token_access_mutex;
-    init_tokens(token_access_mutex);
-    while (1)
-    {    
-        time_t now  = time(NULL);
+void* update_token(void* arg){
+     pthread_detach(pthread_self());
+     log_info("Inside of update token function");
+     pthread_mutex_t token_access_mutex = PTHREAD_MUTEX_INITIALIZER;
+     refresh("vault");
+     refresh("managedHsm");
+     
+     //To alter/test this, change the times and conditionals
+     init_tokens(token_access_mutex);
+     while (1)
+     {
+        time_t now = time(NULL);
         if(((now - tokens[0].acquired) > 1800) || (tokens[0].expiration <= now)){
             pthread_mutex_lock(&token_access_mutex);
             //REFRESH TOKEN FOR VAULT
@@ -166,8 +160,7 @@ void update_token(void* arg){
             pthread_mutex_unlock(&token_access_mutex);
         }
         sleep(60);
-    }
-    free(tokens);
+     }
 }
 
 /**
@@ -177,13 +170,23 @@ void update_token(void* arg){
  * @return Specified token
  */
 struct Token get_token(char* type){
-    log_info("get_token about to print values:");
-    log_info("Value of token access Vault: %s", tokens[0].accesstoken);
-    log_info("Value of token access MHSM: %s", tokens[1].accesstoken);
-
+    //check if values are there and expiration
+    //      if so, return it
+    //else
+    //      refresh
     if (strcasecmp(type, "vault") == 0){
-        return tokens[0];
+        if(tokens[0].accesstoken != NULL){
+            return tokens[0];
+        }
+        else {
+            refresh("vault");
+        }
     }else if (strcasecmp(type, "managedHsm") == 0){
-        return tokens[1];
+        if(tokens[0].accesstoken != NULL){
+            return tokens[1];
+        }
+        else {
+            refresh("managedHsm");
+        }
     }
 }
